@@ -25,7 +25,7 @@ public class Receiver {
         try {
             socket = new DatagramSocket(PORTA_RECEPTOR);
             System.out.println("[Receptor] Aguardando pacotes na porta " + PORTA_RECEPTOR + "...");
-            System.out.println("[Receptor] Roteador alvo para ACKs configurado para: " + ipRoteador + ":" + PORTA_ROTEADOR_ACK);
+            System.out.println("[Receptor] ACKs serão enviados para o Roteador em: " + ipRoteador + ":" + PORTA_ROTEADOR_ACK);
 
             byte[] buffer = new byte[1024];
             while (true) {
@@ -42,37 +42,39 @@ public class Receiver {
                 int checksumRecebido = bb.getShort() & 0xFFFF;
                 byte[] conteudo = Arrays.copyOfRange(dados, 4, dados.length);
 
+                // Validar integridade
                 byte[] checksumData = new byte[2 + conteudo.length];
                 checksumData[0] = (byte) ((seqNum >> 8) & 0xFF);
                 checksumData[1] = (byte) (seqNum & 0xFF);
                 System.arraycopy(conteudo, 0, checksumData, 2, conteudo.length);
                 
                 if (checksumRecebido != calcularChecksum(checksumData)) {
-                    System.out.println("[Receptor] Pacote " + seqNum + " corrompido! Enviando ACK do anterior.");
+                    System.out.println("[Receptor] ❌ Pacote " + seqNum + " corrompido! Enviando ACK do último confirmado.");
                     enviarAck(socket, expectedSeq - 1);
                     continue;
                 }
 
+                // Lógica de Janela (Go-Back-N)
                 if (seqNum == expectedSeq) {
-                    if (conteudo.length == 0) { 
+                    if (conteudo.length == 0) { // Pacote FIN real
                         enviarAck(socket, expectedSeq);
-                        System.out.println("\n[Receptor] Fim da transmissão (Pacote FIN) detectado.");
+                        System.out.println("\n[Receptor] ✅ Fim da transmissão (FIN) recebido.");
                         break;
                     }
                     
                     mensagem.write(conteudo);
-                    System.out.println("[Receptor] Pacote " + seqNum + " aceito.");
+                    System.out.println("[Receptor] 📦 Pacote " + seqNum + " aceito.");
                     expectedSeq++;
                 } else {
-                    System.out.println("[Receptor] Fora de ordem (esperado=" + expectedSeq + ", recebido=" + seqNum + ")");
+                    System.out.println("[Receptor] ⚠️ Fora de ordem (Esperado: " + expectedSeq + ", Recebido: " + seqNum + ")");
                 }
 
                 enviarAck(socket, expectedSeq - 1);
             }
 
-            System.out.println("\n===== MENSAGEM COMPLETA =====");
+            System.out.println("\n===== MENSAGEM FINALIZADA =====");
             System.out.println(new String(mensagem.toByteArray(), StandardCharsets.UTF_8));
-            System.out.println("=============================");
+            System.out.println("===============================");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -102,6 +104,6 @@ public class Receiver {
                 InetAddress.getByName(ipRoteador), PORTA_ROTEADOR_ACK
         );
         socket.send(ackPacket);
-        System.out.println("[Receptor] Enviou ACK(" + ackNum + ")");
+        System.out.println("[Receptor] 📡 Enviou ACK(" + ackNum + ")");
     }
 }

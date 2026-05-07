@@ -1,3 +1,4 @@
+import argparse
 import socket
 import threading
 import struct
@@ -5,11 +6,11 @@ import time
 import json
 
 class GBNSender:
-    def __init__(self, sender_addr=('127.0.0.1', 9000), router_addr=('127.0.0.1', 9001)):
-        self.sender_addr = sender_addr
-        self.router_addr = router_addr
+    def __init__(self, timeout=2.0):
+        self.sender_addr = ('127.0.0.1', 9000)
+        self.router_addr = ('127.0.0.1', 9001)
         self.window_size = 5
-        self.timeout = 0.5
+        self.timeout = timeout
         self.max_data_size = 50
         
         self.base = 0
@@ -50,7 +51,7 @@ class GBNSender:
     def handle_timeout(self):
         if not self.is_active: return
         with self.lock:
-            print(f"\n[Emissor] TIMEOUT! Reenviando da seq {self.base} até {self.next_seq_num - 1}")
+            print(f"\n[Emissor] ⏰ TIMEOUT ({self.timeout}s)! Reenviando da seq {self.base} até {self.next_seq_num - 1}")
             for i in range(self.base, self.next_seq_num):
                 if i in self.buffer_pacotes:
                     self.sock.sendto(self.buffer_pacotes[i], self.router_addr)
@@ -67,17 +68,19 @@ class GBNSender:
                 print(f"[Emissor] Recebeu ACK({ack})")
 
                 with self.lock:
+                    # Lógica ajustada e otimizada
                     if ack >= self.base:
                         self.base = ack + 1
                         if self.base == self.next_seq_num:
                             self.stop_timer()
+                            print("[Emissor] Timer parado. Janela limpa.")
                         else:
                             self.start_timer()
             except Exception:
                 break
 
     def iniciar_transmissao(self):
-        print(f"[Emissor] Pronto na porta local {self.sender_addr[1]}")
+        print(f"[Emissor] Pronto (Timeout configurado: {self.timeout}s)")
         texto = input("Digite a mensagem para enviar: ")
         dados = texto.encode('utf-8')
 
@@ -94,7 +97,7 @@ class GBNSender:
                         pacote = self.criar_pacote(self.next_seq_num, bloco)
                         self.buffer_pacotes[self.next_seq_num] = pacote
                         self.sock.sendto(pacote, self.router_addr)
-                        print(f"[Emissor] Pacote {self.next_seq_num} enviado.")
+                        print(f"[Emissor] Pacote {self.next_seq_num} enviado (Janela: {self.base} a {self.base+self.window_size-1}).")
                         
                         if self.base == self.next_seq_num:
                             self.start_timer()
@@ -102,7 +105,7 @@ class GBNSender:
                 else:
                     time.sleep(0.01)
 
-            # Envia FIN
+            # Envia FIN com payload vazio (O segredo do encerramento livre de bugs!)
             with self.lock:
                 pacote_fin = self.criar_pacote(self.next_seq_num, b'')
                 self.buffer_pacotes[self.next_seq_num] = pacote_fin
@@ -120,7 +123,11 @@ class GBNSender:
             self.stop_timer()
             self.is_active = False
             self.sock.close()
-            print("\n[Emissor] Envio concluído. Conexão encerrada.")
+            print("\n[Emissor] Envio concluído. Transmissão encerrada.")
 
 if __name__ == "__main__":
-    GBNSender().iniciar_transmissao()
+    parser = argparse.ArgumentParser(description="Emissor GBN")
+    parser.add_argument("--timeout", type=float, default=2.0, help="Tempo para considerar perda (Use ~20s se usar o Router Interativo)")
+    args = parser.parse_args()
+
+    GBNSender(timeout=args.timeout).iniciar_transmissao()
