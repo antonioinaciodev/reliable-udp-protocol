@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Java compiled files
+*.class
+*.jar
+*.war
+
+# VS Code / IDEs
+.vscode/
+.idea/
